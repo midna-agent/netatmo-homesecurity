@@ -1,0 +1,30 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Netatmo Home + Security",
+        "description": "Sign in with your Netatmo / Legrand / BTicino account, or provide an existing refresh token.",
+        "data": {
+          "username": "Email",
+          "password": "Password",
+          "refresh_token": "Refresh token (optional, instead of email/password)",
+          "client_id": "OAuth client_id",
+          "client_secret": "OAuth client_secret (optional; app default used if empty)",
+          "home_id": "Home ID (optional; first home used if empty)"
+        }
+      }
+    },
+    "error": {
+      "auth": "Authentication failed. Check your credentials or refresh token.",
+      "unknown": "Unexpected error."
+    },
+    "abort": {
+      "already_configured": "This home is already configured."
+    }
+  },
+  "entity": {
+    "button": {
+      "open_door": { "name": "Open" }
+    }
+  }
+}

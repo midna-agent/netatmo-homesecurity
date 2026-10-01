@@ -1,0 +1,15 @@
+# Personal secrets / captures — NEVER commit
+evidence/
+run/
+*.ndjson
+session.json
+.env
+*.jpg
+snapshots/
+# Python
+__pycache__/
+*.pyc
+.venv/
+build/
+dist/
+*.egg-info/

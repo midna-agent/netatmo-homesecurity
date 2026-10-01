@@ -1,0 +1,12 @@
+{
+  "domain": "netatmo_homesecurity",
+  "name": "Netatmo Home + Security (Legrand/BTicino)",
+  "version": "0.1.0",
+  "documentation": "https://github.com/midna-agent/netatmo-homesecurity",
+  "issue_tracker": "https://github.com/midna-agent/netatmo-homesecurity/issues",
+  "codeowners": ["@midna-agent"],
+  "config_flow": true,
+  "iot_class": "cloud_polling",
+  "integration_type": "hub",
+  "requirements": ["requests>=2.31"]
+}
