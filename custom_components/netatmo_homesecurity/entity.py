@@ -31,7 +31,6 @@ class NetatmoHSEntity(CoordinatorEntity[NetatmoHSCoordinator]):
             name=name,
             manufacturer="Netatmo / Legrand-BTicino",
             model=(module.type if module else None),
-            via_device=(DOMAIN, self.coordinator.home_id),
         )
 
     @property
