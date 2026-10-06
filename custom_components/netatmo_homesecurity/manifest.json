@@ -1,7 +1,7 @@
 {
   "domain": "netatmo_homesecurity",
   "name": "Netatmo Home + Security (Legrand/BTicino)",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "documentation": "https://github.com/midna-agent/netatmo-homesecurity",
   "issue_tracker": "https://github.com/midna-agent/netatmo-homesecurity/issues",
   "codeowners": ["@midna-agent"],
