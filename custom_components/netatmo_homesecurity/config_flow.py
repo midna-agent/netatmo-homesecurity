@@ -12,7 +12,7 @@ from typing import Any
 
 import voluptuous as vol
 
-from homeassistant.config_entries import ConfigFlow, ConfigFlowResult
+from homeassistant.config_entries import ConfigEntry, ConfigFlow, ConfigFlowResult
 
 from .const import (
     CONF_CLIENT_ID,
@@ -35,6 +35,80 @@ class NetatmoHSConfigFlow(ConfigFlow, domain=DOMAIN):
     """Handle the config flow."""
 
     VERSION = 1
+
+    _reauth_entry: ConfigEntry | None = None
+
+    async def async_step_reauth(
+        self, entry_data: dict[str, Any]
+    ) -> ConfigFlowResult:
+        """Started by Home Assistant when setup/polling raised
+        ConfigEntryAuthFailed (token revoked and refresh token dead)."""
+        self._reauth_entry = self.hass.config_entries.async_get_entry(
+            self.context["entry_id"]
+        )
+        return await self.async_step_reauth_confirm()
+
+    async def async_step_reauth_confirm(
+        self, user_input: dict[str, Any] | None = None
+    ) -> ConfigFlowResult:
+        """Ask for the password (or a fresh refresh token) and store a new token."""
+        entry = self._reauth_entry
+        assert entry is not None
+        errors: dict[str, str] = {}
+        if user_input is not None:
+            try:
+                token = await self.hass.async_add_executor_job(
+                    self._reauth_token, entry.data, user_input
+                )
+            except NetatmoError as err:
+                _LOGGER.warning("reauth failed: %s", err)
+                errors["base"] = "auth"
+            except Exception:  # noqa: BLE001
+                _LOGGER.exception("unexpected error during reauth")
+                errors["base"] = "unknown"
+            else:
+                return self.async_update_reload_and_abort(
+                    entry,
+                    data={**entry.data, CONF_TOKEN: token.to_dict()},
+                )
+
+        schema = vol.Schema(
+            {
+                vol.Optional(
+                    CONF_USERNAME, default=entry.data.get(CONF_USERNAME, "")
+                ): str,
+                vol.Optional(CONF_PASSWORD): str,
+                vol.Optional(CONF_REFRESH_TOKEN): str,
+            }
+        )
+        return self.async_show_form(
+            step_id="reauth_confirm",
+            data_schema=schema,
+            errors=errors,
+            description_placeholders={"home": entry.data.get(CONF_HOME_NAME, "")},
+        )
+
+    @staticmethod
+    def _reauth_token(
+        entry_data: dict[str, Any], user_input: dict[str, Any]
+    ) -> Token:
+        """Blocking: obtain a fresh token with password or refresh token."""
+        client = NetatmoClient(
+            client_id=entry_data.get(CONF_CLIENT_ID) or DEFAULT_CLIENT_ID,
+            client_secret=entry_data.get(CONF_CLIENT_SECRET) or None,
+        )
+        refresh_token = user_input.get(CONF_REFRESH_TOKEN)
+        if refresh_token:
+            client.api.set_token(
+                Token(access_token="", refresh_token=refresh_token, expires_at=0)
+            )
+            return client.api.refresh()
+        username = user_input.get(CONF_USERNAME) or entry_data.get(CONF_USERNAME)
+        password = user_input.get(CONF_PASSWORD)
+        if not username or not password:
+            raise NetatmoError("username and password (or a refresh_token) "
+                               "are required")
+        return client.api.login(username, password)
 
     async def async_step_user(
         self, user_input: dict[str, Any] | None = None

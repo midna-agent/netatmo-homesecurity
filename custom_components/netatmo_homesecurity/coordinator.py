@@ -9,6 +9,7 @@ from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant, callback
+from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .const import (
@@ -19,7 +20,7 @@ from .const import (
     DOMAIN,
     UPDATE_INTERVAL_SECONDS,
 )
-from .lib import NetatmoClient, NetatmoError, Token
+from .lib import NetatmoAuthError, NetatmoClient, NetatmoError, Token
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -62,6 +63,8 @@ class NetatmoHSCoordinator(DataUpdateCoordinator):
     async def _async_update_data(self) -> dict[str, Any]:
         try:
             return await self.hass.async_add_executor_job(self._poll)
+        except NetatmoAuthError as err:
+            raise ConfigEntryAuthFailed(str(err)) from err
         except NetatmoError as err:
             raise UpdateFailed(str(err)) from err
 

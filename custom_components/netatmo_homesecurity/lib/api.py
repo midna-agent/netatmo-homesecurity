@@ -76,6 +76,28 @@ class NetatmoError(RuntimeError):
         self.payload = payload
 
 
+class NetatmoAuthError(NetatmoError):
+    """The backend rejected our credentials or tokens and they could not be
+    renewed (invalid/revoked access token with a dead refresh token, bad
+    password...). Retrying will not help: the user has to sign in again."""
+
+
+# Netatmo error codes meaning "the access token is unusable":
+# 1 = access token missing, 2 = invalid access token, 3 = access token expired.
+_TOKEN_ERROR_CODES = {1, 2, 3}
+
+
+def _is_token_rejection(status: int, payload: Any) -> bool:
+    """True if an API response means the bearer token was rejected."""
+    if status == 401:
+        return True
+    if status in (400, 403) and isinstance(payload, dict):
+        err = payload.get("error")
+        if isinstance(err, dict):
+            return err.get("code") in _TOKEN_ERROR_CODES
+    return False
+
+
 @dataclass
 class Token:
     access_token: str
@@ -160,7 +182,10 @@ class NetatmoAPI:
     def _check(self, resp: requests.Response) -> Any:
         data = self._decode(resp)
         if resp.status_code >= 400:
-            raise NetatmoError(
+            exc = (NetatmoAuthError
+                   if _is_token_rejection(resp.status_code, data)
+                   else NetatmoError)
+            raise exc(
                 f"HTTP {resp.status_code} on {resp.request.method} "
                 f"{resp.request.url}: {data}",
                 status=resp.status_code, payload=data,
@@ -175,12 +200,34 @@ class NetatmoAPI:
         return {"Authorization": f"Bearer {tok.access_token}"}
 
     def _post_json(self, path: str, body: dict, *, auth: bool = True) -> Any:
+        resp = self._send_json(path, body, auth=auth)
+        if auth and _is_token_rejection(resp.status_code, self._decode(resp)):
+            # The server refuses a token we still believed valid (revoked,
+            # rotated by another login...). Renew it once and retry; if the
+            # refresh token is dead too, refresh() raises NetatmoAuthError.
+            with self._lock:
+                rejected = self.token.access_token if self.token else None
+            self._renew_rejected(rejected)
+            resp = self._send_json(path, body, auth=auth)
+        return self._check(resp)
+
+    def _send_json(self, path: str, body: dict, *, auth: bool) -> requests.Response:
         headers = {"Content-Type": "application/json; charset=utf-8"}
         if auth:
             headers.update(self._auth_headers())
-        resp = self._s.post(API_HOST + path, data=json.dumps(body),
-                            headers=headers, timeout=self.timeout)
-        return self._check(resp)
+        try:
+            return self._s.post(API_HOST + path, data=json.dumps(body),
+                                headers=headers, timeout=self.timeout)
+        except requests.RequestException as err:
+            raise NetatmoError(f"network error on POST {path}: {err}") from err
+
+    def _renew_rejected(self, rejected_access_token: str | None) -> None:
+        """Refresh after the server rejected `rejected_access_token`, unless
+        another thread already replaced it in the meantime."""
+        with self._lock:
+            if self.token and self.token.access_token != rejected_access_token:
+                return
+            self.refresh()
 
     # -- authentication -----------------------------------------------------
 
@@ -192,6 +239,28 @@ class NetatmoAPI:
                 "NETATMO_CLIENT_SECRET environment variable. This is the "
                 "application secret the app sends on login; it is not issued "
                 "by the server.")
+
+    def _token_request(self, form: dict) -> Any:
+        """POST /oauth2/token. A 4xx here means the credentials / refresh
+        token are no good (NetatmoAuthError); 5xx and network failures stay
+        plain NetatmoError so callers can treat them as transient."""
+        try:
+            resp = self._s.post(
+                API_HOST + "/oauth2/token", data=form,
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
+                timeout=self.timeout,
+            )
+        except requests.RequestException as err:
+            raise NetatmoError(f"network error on POST /oauth2/token: {err}") from err
+        try:
+            return self._check(resp)
+        except NetatmoAuthError:
+            raise
+        except NetatmoError as err:
+            if err.status in (400, 401, 403):
+                raise NetatmoAuthError(str(err), status=err.status,
+                                       payload=err.payload) from err
+            raise
 
     def login(self, username: str, password: str) -> Token:
         """Password-grant login — identical to the app's POST /oauth2/token."""
@@ -205,12 +274,7 @@ class NetatmoAPI:
             "client_id": self.client_id,
             "username": username,
         }
-        resp = self._s.post(
-            API_HOST + "/oauth2/token", data=form,
-            headers={"Content-Type": "application/x-www-form-urlencoded"},
-            timeout=self.timeout,
-        )
-        body = self._check(resp)
+        body = self._token_request(form)
         with self._lock:
             self.token = Token.from_response(body)
         self._notify_token()
@@ -231,12 +295,7 @@ class NetatmoAPI:
             "scope": SCOPE,
             "app_version": APP_VERSION,
         }
-        resp = self._s.post(
-            API_HOST + "/oauth2/token", data=form,
-            headers={"Content-Type": "application/x-www-form-urlencoded"},
-            timeout=self.timeout,
-        )
-        body = self._check(resp)
+        body = self._token_request(form)
         with self._lock:
             self.token = Token.from_response(body)
         self._notify_token()

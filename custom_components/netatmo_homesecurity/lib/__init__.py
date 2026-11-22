@@ -2,8 +2,8 @@
 Assistant integration is self-contained. Kept in sync with the top-level
 netatmo_client package in this repository."""
 
-from .api import NetatmoAPI, NetatmoError, Token
+from .api import NetatmoAPI, NetatmoAuthError, NetatmoError, Token
 from .client import NetatmoClient, Home, Module
 
-__all__ = ["NetatmoAPI", "NetatmoError", "Token",
+__all__ = ["NetatmoAPI", "NetatmoAuthError", "NetatmoError", "Token",
            "NetatmoClient", "Home", "Module"]

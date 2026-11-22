@@ -12,6 +12,15 @@
           "client_secret": "OAuth client_secret (opcional; se usa el de la app si se deja vacío)",
           "home_id": "ID de la casa (opcional; se usa la primera si se deja vacío)"
         }
+      },
+      "reauth_confirm": {
+        "title": "Reautenticar Netatmo Home + Security",
+        "description": "Netatmo ha rechazado la sesión guardada de {home}. Introduce de nuevo tu contraseña (o un refresh token nuevo).",
+        "data": {
+          "username": "Email",
+          "password": "Contraseña",
+          "refresh_token": "Refresh token (opcional, en lugar de contraseña)"
+        }
       }
     },
     "error": {
@@ -19,12 +28,15 @@
       "unknown": "Error inesperado."
     },
     "abort": {
-      "already_configured": "Esta casa ya está configurada."
+      "already_configured": "Esta casa ya está configurada.",
+      "reauth_successful": "Reautenticación correcta."
     }
   },
   "entity": {
     "button": {
-      "open_door": { "name": "Abrir" }
+      "open_door": {
+        "name": "Abrir"
+      }
     }
   }
 }

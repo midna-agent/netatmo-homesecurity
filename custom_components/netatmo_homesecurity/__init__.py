@@ -6,11 +6,11 @@ import logging
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import HomeAssistant
-from homeassistant.exceptions import ConfigEntryNotReady
+from homeassistant.exceptions import ConfigEntryAuthFailed, ConfigEntryNotReady
 
 from .const import DOMAIN, PLATFORMS
 from .coordinator import NetatmoHSCoordinator
-from .lib import NetatmoError
+from .lib import NetatmoAuthError, NetatmoError
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -20,6 +20,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     coordinator = NetatmoHSCoordinator(hass, entry)
     try:
         await coordinator.async_setup()
+    except NetatmoAuthError as err:
+        # Token rejected and not renewable (revoked / dead refresh token):
+        # retrying is pointless. Start a reauth flow so the user (or a
+        # watchdog) sees "needs reauthentication" instead of setup_retry.
+        await coordinator.async_shutdown()
+        raise ConfigEntryAuthFailed(
+            f"Netatmo authentication failed: {err}"
+        ) from err
     except NetatmoError as err:
         # Transient backend problems (rate limit 429, network, temporary auth
         # refresh failure) must not park the entry in setup_error forever.
